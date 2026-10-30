@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawn } from 'node:child_process';
 import { db, tx, setting, setSetting, normalize, DB_PATH } from './src/db.js';
 import { createCategorizer, merchantKey } from './src/categorize.js';
 
@@ -685,7 +686,25 @@ app.get('/api/export', route((req, res) => {
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
-app.listen(PORT, HOST, () => {
-  console.log(`PFinance running at http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+// `--open` (used by the launchers) opens the browser once the server is actually listening.
+const URL_ = `http://localhost:${PORT}`;
+function openBrowser() {
+  const [cmd, args] = process.platform === 'win32' ? ['cmd', ['/c', 'start', '', URL_]]
+    : process.platform === 'darwin' ? ['open', [URL_]] : ['xdg-open', [URL_]];
+  try { spawn(cmd, args, { stdio: 'ignore', detached: true }).on('error', () => {}).unref(); } catch { /* no browser available */ }
+}
+
+const server = app.listen(PORT, HOST, () => {
+  console.log(`PFinance running at ${URL_}`);
   console.log(`Database: ${DB_PATH}`);
+  console.log('Keep this window open while you use PFinance; close it to stop.');
+  if (process.argv.includes('--open')) openBrowser();
+});
+server.on('error', err => {
+  if (err.code !== 'EADDRINUSE') throw err;
+  // Most likely PFinance is already running (launcher double-clicked twice): just show it.
+  console.log(`Port ${PORT} is already in use; PFinance is probably already running at ${URL_}.`);
+  console.log('If another program uses that port, start PFinance with a different one, e.g. PORT=3001.');
+  if (process.argv.includes('--open')) openBrowser();
+  process.exitCode = 1;
 });

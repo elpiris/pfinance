@@ -26,8 +26,10 @@ export default async function settings(root) {
       </div>
       <div class="card">
         <h2>Backup</h2>
-        <p class="subtle" style="margin-top:0">All your data lives in a single file on this computer: <code>data/finance.db</code> inside the app folder.
-          Copy that file to back up everything, or download a JSON export:</p>
+        <p class="subtle" style="margin-top:0">All your data lives on this computer, in the <code>data</code> folder inside the app folder
+          (<code>finance.db</code> plus its <code>-wal</code> and <code>-shm</code> companion files).
+          To back up, close PFinance and copy the <strong>whole <code>data</code> folder</strong>; copying only <code>finance.db</code> can miss recent changes.
+          You can also download a JSON export:</p>
         <a class="btn" href="/api/export" download>Download JSON export</a>
       </div>
       <div class="card">

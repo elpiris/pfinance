@@ -4,18 +4,25 @@ A personal finance tracker that runs on your own computer. It tracks income and 
 
 All data is stored locally in `data/finance.db` (SQLite). The server only listens on `127.0.0.1`, so nothing is reachable from outside your machine. Your data is never part of this repository: `data/` is git-ignored.
 
-## Running it
+## Installing and running it
 
-You need Node.js 22.13 or newer.
+1. **Install Node.js** (version 22.13 or newer). Download the "LTS" installer from https://nodejs.org and run it.
+2. **Download PFinance.** On GitHub, click **Code → Download ZIP** and unzip it somewhere permanent, for example your Documents folder.
+3. **Start it:**
+   - **Windows:** double-click `start.bat`.
+   - **macOS:** double-click `start.command`. The first time, macOS will say it can't verify the developer:
+     1. Open **System Settings → Privacy & Security**.
+     2. Scroll down and click **Open Anyway** next to "start.command".
+     3. Double-click it again.
+   - **Linux:** run `./start.command` in a terminal.
 
-Double-click `start.bat`, or run:
+The first start installs a couple of dependencies, which needs internet. After that the app works offline.
 
-```
-npm install
-npm start
-```
+Your browser opens PFinance automatically. A terminal window stays open while the app runs; close it to stop PFinance.
 
-Then open http://localhost:3000.
+If macOS says `start.command` isn't executable (this can happen with some unzip tools), open Terminal in the folder and run `chmod +x start.command` once.
+
+Developers can also use `npm install` and `npm start`, then open http://localhost:3000.
 
 ## Monthly routine
 

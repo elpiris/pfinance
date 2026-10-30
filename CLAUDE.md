@@ -34,7 +34,7 @@ To test without touching real data, run a throwaway instance:
 PORT=3999 PFINANCE_DATA="$TEMP/pftest" node server.js
 ```
 
-Never run experiments against `data/finance.db`. To test a migration on real data, copy the DB, together with its `-wal` and `-shm` files, into a temp dir first.
+Never run experiments against `data/finance.db`. Importing `src/db.js` (directly or via `categorize.js`/`server.js`) opens the real DB and runs migrations, so use `node --check <file>` for syntax checks. To test a migration on real data, copy the DB, together with its `-wal` and `-shm` files, into a temp dir first.
 
 ## Domain rules (don't break these)
 

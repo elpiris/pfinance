@@ -68,7 +68,8 @@ export default async function transactions(root, params) {
     $('#rows').innerHTML = rows.length ? rows.map(r => `
       <tr data-id="${r.id}">
         <td><input type="checkbox" class="sel" ${selected.has(r.id) ? 'checked' : ''} aria-label="Select"></td>
-        <td style="white-space:nowrap">${esc(dateLabel(r.date))}</td>
+        <td style="white-space:nowrap">${esc(dateLabel(r.date))}
+          ${r.original_date ? `<div class="small muted" title="Moved from the bank date ${esc(dateLabel(r.original_date))}">↪ moved from ${esc(dateLabel(r.original_date))}</div>` : ''}</td>
         <td><div class="concept" title="${esc(r.concept)}">${esc(r.concept)}</div>
           ${r.notes ? `<div class="small muted">${esc(r.notes)}</div>` : ''}</td>
         <td><div class="row" style="gap:4px;flex-wrap:nowrap"><span class="dot" style="background:${r.color || '#bbb'}"></span>
@@ -129,11 +130,23 @@ export default async function transactions(root, params) {
   function editTx(r) {
     // Suggest the first meaningful word(s) of the concept as a rule keyword.
     const suggestion = r.concept.toUpperCase().replace(/\b(COMPRA|PAGO|TARJ\.?|TARJETA|RECIBO|EN|DE)\b/g, ' ').replace(/[0-9*X]{4,}/g, ' ').replace(/\s+/g, ' ').trim().split(' ').slice(0, 2).join(' ');
-    modal({
+    const { form } = modal({
       title: 'Edit transaction',
       body: `
-        <p class="subtle" style="margin-top:0">${esc(dateLabel(r.date))} · <strong>${money(r.amount)}</strong><br>${esc(r.concept)}</p>
-        <label class="field">Notes<input name="notes" value="${esc(r.notes || '')}"></label>
+        <p class="subtle" style="margin-top:0"><strong>${money(r.amount)}</strong> · ${esc(r.concept)}
+          ${r.original_date ? `<br><span class="small">Bank date: ${esc(dateLabel(r.original_date))}</span>` : ''}</p>
+        <div class="form-grid">
+          <label class="field">Date it counts in<input type="date" name="date" value="${r.date}" required></label>
+          <label class="field">Notes<input name="notes" value="${esc(r.notes || '')}"></label>
+        </div>
+        <div class="row small" style="margin-top:6px;gap:4px">
+          <span class="muted">Move to:</span>
+          <button type="button" class="link small" data-move="next">1st of next month</button>
+          <button type="button" class="link small" data-move="prev">last day of previous month</button>
+          ${r.original_date ? `<button type="button" class="link small" data-move="orig">bank date</button>` : ''}
+        </div>
+        <p class="small subtle" style="margin:6px 0 0">Use this to count, e.g., a salary paid on the 28th in the month it's meant for.
+          The bank date is kept, and re-importing the statement won't duplicate it.</p>
         <h3 style="margin-top:18px">Create a categorization rule</h3>
         <p class="small subtle" style="margin-top:0">Any transaction whose concept contains this keyword will be categorized automatically
           (existing auto-categorized transactions are updated too; your manual choices are kept).</p>
@@ -144,7 +157,8 @@ export default async function transactions(root, params) {
         <label class="row small" style="margin-top:8px;gap:6px"><input type="checkbox" name="makeRule"> Create this rule</label>`,
       onSubmit: async form => {
         const d = formData(form);
-        await api(`/transactions/${r.id}`, { method: 'PATCH', body: { notes: d.notes } });
+        await api(`/transactions/${r.id}`, { method: 'PATCH', body: { notes: d.notes, date: d.date } });
+        if (d.date !== r.date) toast(`Moved to ${dateLabel(d.date)}`);
         if (d.makeRule) {
           if (Number(d.category_id) !== r.category_id) {
             await api(`/transactions/${r.id}`, { method: 'PATCH', body: { category_id: Number(d.category_id) } });
@@ -154,6 +168,12 @@ export default async function transactions(root, params) {
         }
         load();
       },
+    });
+    form.querySelectorAll('[data-move]').forEach(b => b.onclick = () => {
+      const [y, m] = r.date.split('-').map(Number);
+      const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      form.elements.date.value = b.dataset.move === 'next' ? iso(new Date(y, m, 1))
+        : b.dataset.move === 'prev' ? iso(new Date(y, m - 1, 0)) : r.original_date;
     });
   }
 

@@ -277,6 +277,12 @@ app.patch('/api/transactions/:id', route(req => {
   let similarUpdated = 0;
   tx(() => {
     if ('notes' in b) db.prepare('UPDATE transactions SET notes = ? WHERE id = ?').run(str(b.notes), t.id);
+    if ('date' in b && b.date !== t.date) {
+      if (!isDate(b.date)) throw new HttpError(400, 'Valid date required.');
+      // Remember the bank's date the first time it moves; moving it back clears the marker.
+      const bankDate = t.original_date || t.date;
+      db.prepare('UPDATE transactions SET date = ?, original_date = ? WHERE id = ?').run(b.date, b.date === bankDate ? null : bankDate, t.id);
+    }
     if ('category_id' in b) {
       const cat = num(b.category_id);
       db.prepare('UPDATE transactions SET category_id = ?, manual = 1 WHERE id = ?').run(cat, t.id);
@@ -574,6 +580,83 @@ app.get('/api/reports/networth', route(() => {
       netWorth: round2(cash + investments + realEstate - mortgage + vehicles - vehicleLoans), contributions: round2(contributions), newlyTracked: round2(newlyTracked), hasData,
     };
   });
+}));
+
+// Month-to-date vs a typical month. "Typical" is the average of the previous 6 months
+// (months with data), both for the whole month and up to the same day of the month,
+// so late salaries and end-of-month bills don't make early days look wrong.
+app.get('/api/reports/forecast', route(req => {
+  const month = isMonth(req.query.month) ? req.query.month : currentMonth();
+  const daysInMonth = Number(monthEnd(month).slice(8));
+  // We only know about money up to the latest imported bank date (moved transactions use their bank date),
+  // so compare "as of" that day rather than the calendar date.
+  const today = new Date().toISOString().slice(0, 10);
+  const dataUntil = db.prepare('SELECT MAX(COALESCE(original_date, date)) AS d FROM transactions').get().d;
+  const cutoff = dataUntil && dataUntil < today ? dataUntil : today;
+  const asOfDay = cutoff >= monthEnd(month) ? daysInMonth : cutoff < `${month}-01` ? 0 : Number(cutoff.slice(8, 10));
+  const complete = asOfDay >= daysInMonth;
+  const from = addMonths(month, -6), to = addMonths(month, -1);
+
+  const history = db.prepare(`
+    SELECT t.category_id, substr(t.date, 1, 7) AS m, CAST(substr(t.date, 9, 2) AS INTEGER) AS day, SUM(t.amount) AS total
+    FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
+    WHERE substr(t.date, 1, 7) BETWEEN ? AND ? AND COALESCE(c.kind, 'expense') != 'transfer'
+    GROUP BY t.category_id, m, day`).all(from, to);
+  const histMonths = new Set(history.map(h => h.m));
+  const n = histMonths.size || 1;
+
+  const actualRows = db.prepare(`
+    SELECT t.category_id, CAST(substr(t.date, 9, 2) AS INTEGER) AS day, SUM(t.amount) AS total
+    FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
+    WHERE substr(t.date, 1, 7) = ? AND COALESCE(c.kind, 'expense') != 'transfer'
+    GROUP BY t.category_id, day`).all(month);
+
+  const cats = new Map(db.prepare(`SELECT id, name, color, kind, "group" FROM categories WHERE kind != 'transfer'`).all().map(c => [c.id, c]));
+  const uncategorized = { id: null, name: 'Uncategorized', color: '#b8b8b8', kind: 'expense', group: 'Other' };
+  const rows = new Map();
+  const row = id => {
+    if (!rows.has(id)) rows.set(id, { ...(cats.get(id) || uncategorized), expected: 0, expectedToDate: 0, actual: 0 });
+    return rows.get(id);
+  };
+  // Amounts are flipped to positive for expense categories so "more" always means more spent.
+  const sign = id => ((cats.get(id) || uncategorized).kind === 'income' ? 1 : -1);
+  const dailyExpected = new Array(daysInMonth + 1).fill(0);
+  const dailyActual = new Array(daysInMonth + 1).fill(0);
+
+  for (const h of history) {
+    const r = row(h.category_id);
+    const v = (h.total * sign(h.category_id)) / n;
+    r.expected += v;
+    if (complete || h.day <= asOfDay) r.expectedToDate += v;
+    if (r.kind === 'expense') dailyExpected[Math.min(h.day, daysInMonth)] += v;
+  }
+  for (const a of actualRows) {
+    const r = row(a.category_id);
+    const v = a.total * sign(a.category_id);
+    r.actual += v;
+    if (r.kind === 'expense') dailyActual[Math.min(a.day, daysInMonth)] += v;
+  }
+
+  const categories = [...rows.values()].map(r => ({
+    ...r,
+    expected: round2(r.expected), expectedToDate: round2(r.expectedToDate), actual: round2(r.actual),
+    // Projection: what you have so far plus whatever typically still comes after today.
+    projected: round2(r.actual + Math.max(0, r.expected - r.expectedToDate)),
+  })).filter(r => r.expected || r.actual);
+
+  const total = kind => {
+    const list = categories.filter(c => c.kind === kind);
+    const sum = k => round2(list.reduce((a, c) => a + c[k], 0));
+    return { expected: sum('expected'), expectedToDate: sum('expectedToDate'), actual: sum('actual'), projected: sum('projected') };
+  };
+  const cumulative = arr => { let acc = 0; return arr.slice(1).map(v => round2(acc += v)); };
+
+  return {
+    month, asOfDay, daysInMonth, dataUntil, historyMonths: histMonths.size,
+    income: total('income'), expenses: total('expense'),
+    categories,
+    cumulative: { expected: cumulative(dailyExpected), actual: cumulative(dailyActual).slice(0, asOfDay) },
+  };
 }));
 
 /* ---------------- Backup ---------------- */

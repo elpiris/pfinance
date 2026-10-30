@@ -235,6 +235,15 @@ function migrate() {
       setSetting('schemaVersion', 2);
     });
   }
+  if (version < 3) {
+    tx(() => {
+      // `date` is the date used for reporting; when the user moves a transaction to another
+      // month, the bank's date is kept here. The import fingerprint keeps using the bank date.
+      const cols = db.prepare('PRAGMA table_info(transactions)').all().map(c => c.name);
+      if (!cols.includes('original_date')) db.exec('ALTER TABLE transactions ADD COLUMN original_date TEXT');
+      setSetting('schemaVersion', 3);
+    });
+  }
 }
 
 seed();

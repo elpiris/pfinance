@@ -55,3 +55,4 @@ Ideas and known issues, roughly in priority order. Move items to "Done" (with th
 - 2026-10-15: First version (import, categorization, budget, investments, real estate, dashboard).
 - 2026-10-30: Import dropzone layout fix; vehicles + car loans with net worth toggle; no-cache static files; GitHub repo, CLAUDE.md, TODO.md, MIT license.
 - 2026-10-30: Split balance columns (`Saldo (+)` / `Saldo (-)`) in import, auto-detected and also applied to saved layouts. Newly tracked accounts/properties/vehicles are no longer counted as net-worth growth. The importer no longer guesses date columns like "F. Valor" as the amount.
+- 2026-10-30: Move a transaction to another date/month (bank date kept, dedupe unaffected). New "This month" page: month-to-date vs typical-by-the-same-day (last 6 months), projected month end per category, and a dashboard card. The cutoff is the latest imported bank date.

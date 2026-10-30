@@ -1,6 +1,7 @@
 import { api, state, loadCategories, destroyCharts, toast } from './util.js';
 import dashboard from './views/dashboard.js';
 import transactions from './views/transactions.js';
+import month from './views/month.js';
 import importView from './views/import.js';
 import budget from './views/budget.js';
 import investments from './views/investments.js';
@@ -8,7 +9,7 @@ import { realEstate, vehicles } from './views/properties.js';
 import categories from './views/categories.js';
 import settings from './views/settings.js';
 
-const routes = { dashboard, transactions, import: importView, budget, investments, properties: realEstate, vehicles, categories, settings };
+const routes = { dashboard, month, transactions, import: importView, budget, investments, properties: realEstate, vehicles, categories, settings };
 
 async function render() {
   const [name, query] = (location.hash.replace(/^#\/?/, '') || 'dashboard').split('?');

@@ -1,10 +1,11 @@
 import { api, state, money, pct, monthLabel, chart, cssVar, legendHTML, esc, addMonths } from '../util.js';
 
 export default async function dashboard(root) {
-  const [networth, monthly, months] = await Promise.all([
+  const [networth, monthly, months, forecast] = await Promise.all([
     api('/reports/networth'),
     api('/reports/monthly'),
     api('/transactions/months'),
+    api('/reports/forecast'),
   ]);
 
   if (!networth.length && !months.length) {
@@ -83,6 +84,24 @@ export default async function dashboard(root) {
           : `${money(last.vehicles, { decimals: 0 })} value − ${money(last.vehicleLoans, { decimals: 0 })} loan`}</div>
       </div>` : ''}
     </div>
+
+    ${forecast.historyMonths && forecast.asOfDay ? (() => {
+      const f = forecast;
+      const spendDiff = f.expenses.actual - f.expenses.expectedToDate;
+      const projSavings = f.income.projected - f.expenses.projected;
+      return `<a class="card row" href="#/month" style="margin-top:16px;text-decoration:none;color:inherit;justify-content:space-between">
+        <div><h2 style="margin:0">${esc(monthLabel(f.month, 'long'))} so far</h2>
+          <div class="small muted">Data up to day ${f.asOfDay} of ${f.daysInMonth}, compared with a typical month up to that day</div></div>
+        <div class="row" style="gap:28px">
+          <div class="kpi"><div class="label">Spent</div><div class="value" style="font-size:20px">${money(f.expenses.actual, { decimals: 0 })}</div>
+            <div class="delta ${spendDiff <= 0 ? 'pos' : 'neg'}">${money(spendDiff, { sign: true, decimals: 0 })} vs typical</div></div>
+          <div class="kpi"><div class="label">Received</div><div class="value" style="font-size:20px">${money(f.income.actual, { decimals: 0 })}</div>
+            <div class="delta muted">typical ${money(f.income.expectedToDate, { decimals: 0 })}</div></div>
+          <div class="kpi"><div class="label">Projected savings</div><div class="value" style="font-size:20px">${money(projSavings, { decimals: 0 })}</div>
+            <div class="delta muted">typical ${money(f.income.expected - f.expenses.expected, { decimals: 0 })}</div></div>
+          <span style="color:var(--accent)">Details →</span>
+        </div></a>`;
+    })() : ''}
 
     <div class="card" style="margin-top:16px">
       <div class="row" style="justify-content:space-between">

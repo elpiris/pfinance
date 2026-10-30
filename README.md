@@ -43,7 +43,8 @@ Categories of type **Transfer**, such as "Transfers" and "Investments", are excl
 ## Pages
 
 - **Dashboard.** Net worth over time (cash, investments and real estate equity), income vs expenses, and the latest month's top categories.
-- **Transactions.** Filter, search, re-categorize one at a time or in bulk, add notes and create rules.
+- **This month.** Income and spending so far against a typical month up to the same day, plus a projected month end, overall and per category.
+- **Transactions.** Filter, search, re-categorize one at a time or in bulk, add notes and create rules. You can also move a transaction to another month (e.g. a salary paid on the 28th); the bank date is kept.
 - **Spending & budget.** Monthly budgets per category, comparison with your 6-month average, a 12-month category heatmap and a detector for recurring charges and subscriptions.
 - **Vehicles.** Resale value, car loan, depreciation and payoff progress.
 - **Categories & rules.** Manage categories, groups and keyword rules.

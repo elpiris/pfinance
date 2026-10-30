@@ -44,7 +44,6 @@ Ideas and known issues, roughly in priority order. Move items to "Done" (with th
 
 ## App & sharing
 
-- [ ] **Choose a license** (e.g. MIT) before others reuse the code.
 - [ ] **Setup docs for other users.** Requirements, first run, and how to add rules for their bank. Consider shipping a few bank import presets (Santander, BBVA, CaixaBank, ING, Sabadell…).
 - [ ] **Spanish UI (i18n).** Move strings to a dictionary and add a language setting.
 - [ ] **Docker image / single-file build** so non-developers can run it.
@@ -56,4 +55,4 @@ Ideas and known issues, roughly in priority order. Move items to "Done" (with th
 ## Done
 
 - 2026-10-15: First version (import, categorization, budget, investments, real estate, dashboard).
-- 2026-10-30: Import dropzone layout fix; vehicles + car loans with net worth toggle; no-cache static files.
+- 2026-10-30: Import dropzone layout fix; vehicles + car loans with net worth toggle; no-cache static files; GitHub repo, CLAUDE.md, TODO.md, MIT license.

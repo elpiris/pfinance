@@ -25,6 +25,7 @@ Ideas and known issues, roughly in priority order. Move items to "Done" (with th
 
 ## Spending insights
 
+- [ ] **"Always ask" merchants.** For cash withdrawals (`REINT.CAJERO`) and generic transfers, the purpose varies each time, so "learned = most recent manual choice" guesses wrong. Let the user mark a merchant as "always ask": no learned category, and it's highlighted in the import preview.
 - [ ] **Split a transaction** across several categories (e.g. a supermarket receipt that is part groceries, part home).
 - [ ] **Annual / irregular expenses.** For bills like IBI, car insurance and ITV: a yearly budget spread across months ("sinking funds") and reminders of upcoming ones.
 - [ ] **Year view.** Totals per category per year, comparing year on year.
@@ -56,3 +57,4 @@ Ideas and known issues, roughly in priority order. Move items to "Done" (with th
 - 2026-10-30: Import dropzone layout fix; vehicles + car loans with net worth toggle; no-cache static files; GitHub repo, CLAUDE.md, TODO.md, MIT license.
 - 2026-10-30: Split balance columns (`Saldo (+)` / `Saldo (-)`) in import, auto-detected and also applied to saved layouts. Newly tracked accounts/properties/vehicles are no longer counted as net-worth growth. The importer no longer guesses date columns like "F. Valor" as the amount.
 - 2026-10-30: Move a transaction to another date/month (bank date kept, dedupe unaffected). New "This month" page: month-to-date vs typical-by-the-same-day (last 6 months), projected month end per category, and a dashboard card. The cutoff is the latest imported bank date.
+- 2026-10-30: CSV import (CaixaBank format: `;`-separated, `-800,00EUR`), with separator and encoding detection. Cross-format duplicate detection (amount + running balance ±3 days). Merchant matching across export formats (prefixes, tax IDs, SL/SA).

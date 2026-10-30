@@ -170,15 +170,29 @@ function fingerprints(rows) {
   });
 }
 
+// A row is already imported if its fingerprint matches, or, for statements of the same account exported
+// in another format (different concept text), if the amount and running balance match within a few days.
+// The balance changes after every movement, so two different transactions can't share all three.
+// Rows of the import being written are excluded: within one file, +20/-20/+20 can legitimately repeat a balance.
+function duplicateChecker(currentImportId = -1) {
+  const byFingerprint = db.prepare('SELECT 1 FROM transactions WHERE fingerprint = ?');
+  const byBalance = db.prepare(`SELECT 1 FROM transactions
+    WHERE amount = ? AND balance IS NOT NULL AND ABS(balance - ?) < 0.005
+      AND COALESCE(original_date, date) BETWEEN date(?, '-3 days') AND date(?, '+3 days')
+      AND COALESCE(import_id, 0) != ? LIMIT 1`);
+  return (row, fingerprint) => !!byFingerprint.get(fingerprint)
+    || (row.balance !== null && !!byBalance.get(round2(row.amount), row.balance, row.date, row.date, currentImportId));
+}
+
 app.post('/api/import/preview', route(req => {
   const rows = cleanImportRows(req.body.rows);
   const categorize = createCategorizer();
   const fps = fingerprints(rows);
-  const exists = db.prepare('SELECT 1 FROM transactions WHERE fingerprint = ?');
+  const isDuplicate = duplicateChecker();
   return {
     rows: rows.map((r, i) => {
       const { category_id, reason } = categorize(r.concept, r.amount);
-      return { ...r, category_id, reason, duplicate: !!exists.get(fps[i]) };
+      return { ...r, category_id, reason, duplicate: isDuplicate(r, fps[i]) };
     }),
   };
 }));
@@ -193,10 +207,12 @@ app.post('/api/import/commit', route(req => {
   return tx(() => {
     const imp = db.prepare('INSERT INTO imports(filename) VALUES(?)').run(str(req.body.filename));
     const importId = Number(imp.lastInsertRowid);
+    const isDuplicate = duplicateChecker(importId);
     const ins = db.prepare(`INSERT OR IGNORE INTO transactions(date, concept, amount, balance, category_id, manual, import_id, fingerprint)
       VALUES(?,?,?,?,?,?,?,?)`);
     let inserted = 0;
     rows.forEach((r, i) => {
+      if (isDuplicate(r, fps[i])) return;
       const auto = categorize(r.concept, r.amount).category_id;
       const category = r.category_id ?? auto;
       // A category changed in the preview counts as a manual decision and teaches the categorizer.

@@ -81,6 +81,45 @@ function withBalanceMode(m, headers) {
     : { ...m, balanceMode: 'single', balancePos: -1, balanceNeg: -1 };
 }
 
+// Bank CSVs are UTF-8 or, often, Windows-1252 (Ñ, accents). Try strict UTF-8 first.
+function decodeText(buf) {
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(buf).replace(/^\uFEFF/, ''); }
+  catch { return new TextDecoder('windows-1252').decode(buf); }
+}
+
+// Minimal RFC 4180 parser with delimiter detection (; , tab |). All values stay strings,
+// so dates and amounts go through parseDate/parseAmount like any other file.
+function parseCsv(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim()).slice(0, 10);
+  const countOutsideQuotes = (line, d) => { let n = 0, q = false; for (const ch of line) { if (ch === '"') q = !q; else if (ch === d && !q) n++; } return n; };
+  // The delimiter that splits the most lines into the same (non-zero) number of fields.
+  const delim = [';', ',', '\t', '|'].map(d => {
+    const counts = lines.map(l => countOutsideQuotes(l, d));
+    return { d, score: counts[0] ? counts.filter(c => c === counts[0]).length : 0 };
+  }).sort((a, b) => b.score - a.score)[0].d;
+
+  const rows = [];
+  let row = [], field = '', quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"' && text[i + 1] === '"') { field += '"'; i++; }
+      else if (ch === '"') quoted = false;
+      else field += ch;
+    } else if (ch === '"') quoted = true;
+    else if (ch === delim) { row.push(field.trim()); field = ''; }
+    else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      row.push(field.trim()); field = '';
+      if (row.some(v => v)) rows.push(row);
+      row = [];
+    } else field += ch;
+  }
+  row.push(field.trim());
+  if (row.some(v => v)) rows.push(row);
+  return rows;
+}
+
 function parseDate(v, format) {
   if (v === null || v === undefined || v === '') return null;
   if (typeof v === 'number' && v > 20000 && v < 80000) {
@@ -175,7 +214,13 @@ export default async function importView(root) {
   const readFile = guard(async file => {
     filename = file.name;
     const buf = await file.arrayBuffer();
-    workbook = window.XLSX.read(buf, { type: 'array', raw: false, cellDates: false });
+    if (/\.(csv|txt|tsv)$/i.test(file.name)) {
+      // Parse text files ourselves: SheetJS guesses types and reads 05/10/2026 as May 10th.
+      const sheet = window.XLSX.utils.aoa_to_sheet(parseCsv(decodeText(buf)));
+      workbook = { SheetNames: ['CSV'], Sheets: { CSV: sheet } };
+    } else {
+      workbook = window.XLSX.read(buf, { type: 'array', raw: false, cellDates: false });
+    }
     loadSheet(workbook.SheetNames[0]);
   });
 

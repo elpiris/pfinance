@@ -46,7 +46,11 @@ Never run experiments against `data/finance.db`. Importing `src/db.js` (directly
   2. Keyword rules, sorted by priority (user = 10, default = 0) and then by pattern length.
   3. Fallback: Uncategorized, or Other income for money in.
 - **Keyword patterns** are matched against `normalize(concept)`, which upper-cases the text and strips accents. Patterns of 4 characters or fewer must match a whole word. Longer patterns only need to start a word. The bank sometimes glues prefixes onto names (e.g. `CORESANTANDER`), so prefer a distinctive later word as the pattern.
-- **Import dedupe:** `fingerprint = date|amount|normalized concept|occurrence#`. The occurrence number keeps genuine same-day repeats; re-importing overlapping statements is idempotent.
+- **Import dedupe** (`duplicateChecker` in server.js). A row counts as already imported if either test matches:
+  - Its fingerprint (`date|amount|normalized concept|occurrence#`) matches. The occurrence number keeps genuine same-day repeats.
+  - Same amount and same running balance within ±3 days, in a *different* import. This catches the same account exported in another format (e.g. CaixaBank XLS vs CSV), where the concept text differs.
+- **CSV files** are parsed by `parseCsv` in import.js, not by SheetJS, which reads 05/10 as May 10. It detects the separator (`;`, `,`, tab, `|`) and decodes UTF-8 with a Windows-1252 fallback.
+- **`merchantKey`** drops filler words (COMPRA, FECHA, OPERACION…), masked card numbers, company tax IDs and SL/SA suffixes. Learned categories also match when one key is a prefix (6 or more letters) of the other.
 - **Net worth** (`/api/reports/networth`):
   - Account snapshots are carried forward month to month.
   - For properties and vehicles, the latest snapshot on or before month end is used, scaled by `ownership_pct`.
@@ -77,8 +81,10 @@ Never run experiments against `data/finance.db`. Importing `src/db.js` (directly
 
 ## Windows gotchas (dev machine is Spanish Windows)
 
-- To stop a test server, find its PID with `netstat -ano | grep ":3999 "` and then run `Stop-Process -Id <pid>`.
-  - `Get-NetTCPConnection` is unreliable here: it has returned PID 0 (the Idle process) for a listening port.
-  - Kill exactly one PID. Never kill every `node.exe`, because the user's own instance runs on port 3000.
+- To stop a test server, identify it with `Get-CimInstance Win32_Process -Filter "Name='node.exe'"`, which shows the PID, start time and command line, then run `Stop-Process -Id <pid>`.
+  - The user's instance shows up as `node  server.js` (from start.bat). Test servers started from Bash show the full `C:\Program Files\nodejs\node.exe server.js` path.
+  - Port lookups are unreliable here: `Get-NetTCPConnection` has returned PID 0 (Idle), and `netstat` sometimes omits the listening line.
+  - Kill exactly one PID. Never kill every `node.exe`, because the user's own instance runs on port 3000 and its PID changes on every restart.
   - Delete the temp DB only after the process holding it has exited.
 - In ESM, absolute Windows import paths need `file:///C:/...`.
+- Don't write JS containing regex escapes (`\b`, `\d`, `\u`) through Python or `node -e` string literals in Bash. `\b` became a literal backspace and `\uFEFF` a literal BOM. Use the Edit tool, then check with `grep -nP "[\x00-\x08]"`.

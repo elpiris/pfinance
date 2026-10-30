@@ -244,6 +244,16 @@ function migrate() {
       setSetting('schemaVersion', 3);
     });
   }
+  if (version < 4) {
+    tx(() => {
+      // Short concepts used by CaixaBank's CSV export ("SANTANDER CONSUM.").
+      const catId = name => db.prepare('SELECT id FROM categories WHERE name = ?').get(name)?.id;
+      const insRule = db.prepare("INSERT OR IGNORE INTO rules(pattern, category_id, priority, source) VALUES(?, ?, 0, 'default')");
+      if (catId('Car loan')) insRule.run('SANTANDER CONSUM', catId('Car loan'));
+      if (catId('Subscriptions')) for (const p of ['NETLIFY', 'VERCEL', 'GITHUB']) insRule.run(p, catId('Subscriptions'));
+      setSetting('schemaVersion', 4);
+    });
+  }
 }
 
 seed();

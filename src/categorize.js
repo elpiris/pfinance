@@ -10,12 +10,31 @@ function patternRegex(pattern) {
 
 // Strip card numbers, dates, reference codes and filler words so the same merchant
 // produces the same key across statements.
+const FILLER = new Set(['COMPRA', 'PAGO', 'TARJ', 'TARJETA', 'CARD', 'RECIBO', 'TRANSACCION', 'OPERACION', 'FECHA', 'EN', 'DE', 'CON',
+  'PURCHASE', 'PAYMENT', 'DEBIT', 'CREDIT']);
+// Company-form suffixes ("SL", "S.A.", "S.L.U.") once punctuation is gone.
+const LEGAL_SUFFIX = /( S ?L ?U?| S ?A ?U?)$/;
+
 export function merchantKey(concept) {
-  return normalize(concept)
-    .replace(/\b(COMPRA|PAGO|TARJ(ETA)?|TARJ\.|CARD|RECIBO|TRANSACCION|OPERACION|EN|DE|CON|PURCHASE|PAYMENT|DEBIT|CREDIT)\b/g, ' ')
-    .replace(/[^A-Z ]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  const words = normalize(concept)
+    .replace(/\b[A-Z]\d{7,9}[A-Z0-9]?\b/g, ' ') // company tax IDs (CIF/NIF), e.g. B85884534
+    .replace(/[^A-Z]+/g, ' ').trim().split(' ')
+    .filter(w => w && !FILLER.has(w) && !/^X{3,}$/.test(w)); // masked card numbers
+  return words.join(' ').replace(LEGAL_SUFFIX, '').trim();
+}
+
+// Different exports of the same bank shorten names differently ("ORA SANTAND" vs "ORA SANTANDER"),
+// so a learned key also matches when one is a prefix of the other (at least 6 letters).
+function findLearned(learned, key) {
+  if (learned.has(key)) return learned.get(key);
+  let best = null, bestGap = Infinity;
+  for (const [k, cat] of learned) {
+    const [short, long] = k.length <= key.length ? [k, key] : [key, k];
+    if (short.length < 6 || !long.startsWith(short)) continue;
+    const gap = long.length - short.length;
+    if (gap < bestGap) { best = cat; bestGap = gap; }
+  }
+  return best;
 }
 
 export function createCategorizer() {
@@ -40,9 +59,8 @@ export function createCategorizer() {
 
   return function categorize(concept, amount) {
     const key = merchantKey(concept);
-    if (key && learned.has(key) && byId.has(learned.get(key))) {
-      return { category_id: learned.get(key), reason: 'learned' };
-    }
+    const learnedCat = key ? findLearned(learned, key) : null;
+    if (learnedCat && byId.has(learnedCat)) return { category_id: learnedCat, reason: 'learned' };
     const text = normalize(concept);
     for (const rule of rules) {
       if (!rule.re.test(text)) continue;

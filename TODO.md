@@ -4,8 +4,6 @@ Ideas and known issues, roughly in priority order. Move items to "Done" (with th
 
 ## Known issues
 
-- [ ] **Split balance columns.** Some banks export the balance as two columns, `Saldo (+)` and `Saldo (-)`. The importer only maps one balance column, so the month-end cash balance is wrong whenever the balance goes negative. Add a "split balance" mode, like debit/credit.
-- [ ] **New accounts inflate "vs last month".** The first snapshot of a newly added account counts as net worth growth (e.g. +37.784 € in one month). Treat an account's first value as "new tracking", not change, or show the change excluding newly tracked accounts.
 - [ ] **Bizum is income/expense with no category.** Consider a dedicated "Bizum" category with rules for both directions, so they're easy to review in bulk.
 - [ ] **Recurring detector misses variable bills.** Utilities that vary more than 35% month to month aren't listed. Use a looser tolerance for Utilities/Phone categories, or a median-based check.
 
@@ -56,3 +54,4 @@ Ideas and known issues, roughly in priority order. Move items to "Done" (with th
 
 - 2026-10-15: First version (import, categorization, budget, investments, real estate, dashboard).
 - 2026-10-30: Import dropzone layout fix; vehicles + car loans with net worth toggle; no-cache static files; GitHub repo, CLAUDE.md, TODO.md, MIT license.
+- 2026-10-30: Split balance columns (`Saldo (+)` / `Saldo (-)`) in import, auto-detected and also applied to saved layouts. Newly tracked accounts/properties/vehicles are no longer counted as net-worth growth. The importer no longer guesses date columns like "F. Valor" as the amount.

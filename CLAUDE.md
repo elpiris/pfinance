@@ -77,6 +77,8 @@ Never run experiments against `data/finance.db`. To test a migration on real dat
 
 ## Windows gotchas (dev machine is Spanish Windows)
 
-- `netstat` prints `ESCUCHANDO`, not `LISTENING`. To find or kill a server by port, use PowerShell: `Get-NetTCPConnection -LocalPort 3999 -State Listen`.
-- Never kill every `node.exe`, because the user's own instance runs on port 3000.
+- To stop a test server, find its PID with `netstat -ano | grep ":3999 "` and then run `Stop-Process -Id <pid>`.
+  - `Get-NetTCPConnection` is unreliable here: it has returned PID 0 (the Idle process) for a listening port.
+  - Kill exactly one PID. Never kill every `node.exe`, because the user's own instance runs on port 3000.
+  - Delete the temp DB only after the process holding it has exited.
 - In ESM, absolute Windows import paths need `file:///C:/...`.

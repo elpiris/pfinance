@@ -4,7 +4,7 @@ const FIELD_HINTS = {
   date: ['fecha operacion', 'f. operacion', 'fecha', 'date', 'transaction date', 'booking date', 'fecha valor', 'f. valor'],
   concept: ['concepto', 'descripcion', 'description', 'detalle', 'movimiento', 'concept', 'details', 'memo', 'payee', 'narrative'],
   extra: ['observaciones', 'mas datos', 'referencia', 'reference', 'info adicional', 'notes'],
-  amount: ['importe', 'amount', 'cantidad', 'monto', 'valor', 'importe eur', 'value'],
+  amount: ['importe', 'amount', 'cantidad', 'monto', 'importe eur'],
   debit: ['cargo', 'cargos', 'debe', 'debit', 'gasto', 'withdrawal', 'paid out', 'money out'],
   credit: ['abono', 'abonos', 'haber', 'credit', 'ingreso', 'deposit', 'paid in', 'money in'],
   balance: ['saldo', 'balance', 'disponible', 'running balance'],
@@ -42,6 +42,8 @@ function guessMapping(headers) {
     let best = -1, bestScore = 0;
     headers.forEach((h, i) => {
       if (used.has(i)) return;
+      // A date column ("F. Valor", "Value date") is never the amount/concept/balance.
+      if (field !== 'date' && scoreHeader(h, FIELD_HINTS.date) > 0) return;
       const s = scoreHeader(h, FIELD_HINTS[field]);
       if (s > bestScore) { best = i; bestScore = s; }
     });
@@ -56,6 +58,27 @@ function guessMapping(headers) {
   m.dateFormat = 'auto';
   m.invert = false;
   return m;
+}
+
+// Some banks split the running balance in two columns: positive in "Saldo (+)", overdrawn in "Saldo (-)".
+function detectSplitBalance(headers) {
+  let pos = -1, neg = -1;
+  headers.forEach((h, i) => {
+    if (!scoreHeader(h, FIELD_HINTS.balance)) return;
+    const n = norm(h);
+    if (pos < 0 && /\(\+\)|acreedor|positiv/.test(n)) pos = i;
+    else if (neg < 0 && /\(\s*[-−]\s*\)|deudor|negativ/.test(n)) neg = i;
+  });
+  return pos >= 0 && neg >= 0 ? { pos, neg } : null;
+}
+
+// Fill balance settings for new guesses and for layouts saved before split balances existed.
+function withBalanceMode(m, headers) {
+  if (m.balanceMode) return m;
+  const split = detectSplitBalance(headers);
+  return split
+    ? { ...m, balanceMode: 'split', balancePos: split.pos, balanceNeg: split.neg }
+    : { ...m, balanceMode: 'single', balancePos: -1, balanceNeg: -1 };
 }
 
 function parseDate(v, format) {
@@ -165,7 +188,7 @@ export default async function importView(root) {
   function setupHeaders(sheetName) {
     headers = (aoa[headerRow] || []).map((h, i) => String(h).trim() || `Column ${i + 1}`);
     const saved = state.settings.importMapping?.[headers.join('|')];
-    mapping = saved ? { ...saved } : guessMapping(headers);
+    mapping = withBalanceMode(saved ? { ...saved } : guessMapping(headers), headers);
     drawMapping(sheetName);
   }
 
@@ -196,7 +219,12 @@ export default async function importView(root) {
         ${mapping.mode === 'single'
           ? `<label class="field">Amount column${colSelect('amount')}</label>`
           : `<label class="field">Debit (money out)${colSelect('debit', true)}</label><label class="field">Credit (money in)${colSelect('credit', true)}</label>`}
-        <label class="field">Balance column (optional)${colSelect('balance', true)}</label>
+        <label class="field">Balance is in<select data-map="balanceMode">
+          <option value="single" ${mapping.balanceMode !== 'split' ? 'selected' : ''}>One column (+/−)</option>
+          <option value="split" ${mapping.balanceMode === 'split' ? 'selected' : ''}>Two columns: positive / overdrawn</option></select></label>
+        ${mapping.balanceMode === 'split'
+          ? `<label class="field">Balance (+) column${colSelect('balancePos', true)}</label><label class="field">Balance (−) column (overdrawn)${colSelect('balanceNeg', true)}</label>`
+          : `<label class="field">Balance column (optional)${colSelect('balance', true)}</label>`}
         <label class="field">Track balance in account<select id="balanceAccount">
           <option value="">— don’t track —</option>
           ${cashAccounts.map(a => `<option value="${a.id}" ${balanceAcc === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
@@ -215,10 +243,19 @@ export default async function importView(root) {
     step2.querySelector('#headerRow').onchange = e => { headerRow = Math.max(0, Number(e.target.value) - 1); setupHeaders(sheetName); };
     step2.querySelectorAll('[data-map]').forEach(el => el.onchange = () => {
       const k = el.dataset.map;
-      mapping[k] = el.type === 'checkbox' ? el.checked : ['mode', 'dateFormat'].includes(k) ? el.value : Number(el.value);
-      if (k === 'mode') drawMapping(sheetName);
+      mapping[k] = el.type === 'checkbox' ? el.checked : ['mode', 'dateFormat', 'balanceMode'].includes(k) ? el.value : Number(el.value);
+      if (k === 'mode' || k === 'balanceMode') drawMapping(sheetName);
     });
     step2.querySelector('#toPreview').onclick = guard(buildPreview);
+  }
+
+  function readBalance(r) {
+    if (mapping.balanceMode !== 'split') return mapping.balance >= 0 ? parseAmount(r[mapping.balance]) : null;
+    const pos = mapping.balancePos >= 0 ? parseAmount(r[mapping.balancePos]) : null;
+    const neg = mapping.balanceNeg >= 0 ? parseAmount(r[mapping.balanceNeg]) : null;
+    // Overdrawn rows leave the (+) column empty (or 0); the (-) column may hold 404.10 or -404.10.
+    if (neg && !pos) return -Math.abs(neg);
+    return pos;
   }
 
   function extractRows() {
@@ -236,7 +273,7 @@ export default async function importView(root) {
       let concept = String(r[mapping.concept] ?? '').trim();
       if (mapping.extra >= 0 && String(r[mapping.extra] ?? '').trim()) concept = `${concept} ${String(r[mapping.extra]).trim()}`.trim();
       if (!date || amount === null || !concept) continue;
-      out.push({ date, concept, amount: Math.round(amount * 100) / 100, balance: mapping.balance >= 0 ? parseAmount(r[mapping.balance]) : null });
+      out.push({ date, concept, amount: Math.round(amount * 100) / 100, balance: readBalance(r) });
     }
     return out;
   }

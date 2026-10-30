@@ -31,15 +31,18 @@ export default async function dashboard(root) {
   const last = networth[li] || {};
   const vehicleNet = d => (d.vehicles || 0) - (d.vehicleLoans || 0);
   const hasVehicles = networth.some(d => d.vehicles || d.vehicleLoans);
-  const prev = networth[li - 1];
-  const yearAgo = networth[li - 12];
   const focus = monthly.find(m => m.month === focusMonth) || { income: 0, expenses: 0, net: 0 };
   const avgExpenses = trend.length ? trend.reduce((a, m) => a + m.expenses, 0) / trend.filter(m => m.expenses > 0).length || 0 : 0;
 
-  const delta = (now, then, label) => {
-    if (then === undefined || then === null) return '';
-    const d = now - then;
-    return `<div class="delta ${d >= 0 ? 'pos' : 'neg'}">${money(d, { sign: true })} ${label}</div>`;
+  // Real change = difference minus whatever started being tracked in between (a newly added account isn't growth).
+  const newlyTrackedSince = fromIndex => networth.slice(fromIndex + 1, li + 1).reduce((a, d) => a + (d.newlyTracked || 0), 0);
+  const delta = (fromIndex, label) => {
+    const then = networth[fromIndex];
+    if (fromIndex < 0 || !then) return '';
+    const added = newlyTrackedSince(fromIndex);
+    const d = last.netWorth - then.netWorth - added;
+    return `<div class="delta ${d >= 0 ? 'pos' : 'neg'}">${money(d, { sign: true, decimals: 0 })} ${label}</div>
+      ${Math.abs(added) >= 1 ? `<div class="delta muted small" title="Accounts, properties or vehicles whose first value was recorded in this period">excl. ${money(added, { decimals: 0 })} newly tracked</div>` : ''}`;
   };
 
   const expenseCats = cats.filter(c => c.kind === 'expense' && c.total < 0).sort((a, b) => a.total - b.total);
@@ -56,8 +59,8 @@ export default async function dashboard(root) {
         <div class="label">Net worth</div>
         <div class="value">${money(last.netWorth, { decimals: 0 })}</div>
         ${last.month ? `<div class="delta muted">as of ${esc(monthLabel(last.month, 'long'))}</div>` : ''}
-        ${delta(last.netWorth, prev?.netWorth, 'vs last month')}
-        ${delta(last.netWorth, yearAgo?.netWorth, 'vs 12 months ago')}
+        ${delta(li - 1, 'vs last month')}
+        ${delta(li - 12, 'vs 12 months ago')}
       </div>
       <div class="card kpi">
         <div class="label">Cash &amp; savings</div>
@@ -151,7 +154,12 @@ export default async function dashboard(root) {
       },
       options: {
         scales: { y: { stacked: true } },
-        plugins: { tooltip: { callbacks: { footer: items => `Net worth: ${money(data[items[0].dataIndex].netWorth)}` } } },
+        plugins: { tooltip: { callbacks: { footer: items => {
+          const d = data[items[0].dataIndex];
+          const lines = [`Net worth: ${money(d.netWorth)}`];
+          if (Math.abs(d.newlyTracked) >= 1) lines.push(`Includes ${money(d.newlyTracked, { decimals: 0 })} newly tracked this month`);
+          return lines;
+        } } } },
       },
     });
   };

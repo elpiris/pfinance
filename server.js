@@ -537,9 +537,12 @@ app.get('/api/reports/networth', route(() => {
   const propLatest = new Map();    // property_id -> { value, debt, kind }
   let si = 0, pi = 0;
   return months.map(month => {
-    let contributions = 0, hasData = false;
+    // newlyTracked: value that appears because something started being tracked this month
+    // (first snapshot of an account/property/vehicle). It isn't growth, so comparisons subtract it.
+    let contributions = 0, hasData = false, newlyTracked = 0;
     while (si < snaps.length && snaps[si].month <= month) {
       const s = snaps[si++];
+      if (!accountLatest.has(s.account_id)) newlyTracked += s.value;
       accountLatest.set(s.account_id, { value: s.value, type: s.type });
       if (s.month === month) { contributions += s.contributions; hasData = true; }
     }
@@ -548,6 +551,10 @@ app.get('/api/reports/networth', route(() => {
       const p = props[pi++];
       hasData = true;
       const share = (p.ownership_pct ?? 100) / 100;
+      if (!propLatest.has(p.property_id)) {
+        const counted = p.kind === 'vehicle' && !includeVehicleValue ? 0 : p.market_value;
+        newlyTracked += (counted - p.mortgage_balance) * share;
+      }
       propLatest.set(p.property_id, { value: p.market_value * share, debt: p.mortgage_balance * share, kind: p.kind });
     }
     let cash = 0, investments = 0, realEstate = 0, mortgage = 0, vehicles = 0, vehicleLoans = 0;
@@ -564,7 +571,7 @@ app.get('/api/reports/networth', route(() => {
     return {
       month, cash: round2(cash), investments: round2(investments), realEstate: round2(realEstate), mortgage: round2(mortgage),
       vehicles: round2(vehicles), vehicleLoans: round2(vehicleLoans),
-      netWorth: round2(cash + investments + realEstate - mortgage + vehicles - vehicleLoans), contributions: round2(contributions), hasData,
+      netWorth: round2(cash + investments + realEstate - mortgage + vehicles - vehicleLoans), contributions: round2(contributions), newlyTracked: round2(newlyTracked), hasData,
     };
   });
 }));

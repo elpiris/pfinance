@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PFinance</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232a78d6'/><path d='M8 22l6-7 4 4 6-8' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+  <link rel="stylesheet" href="/css/app.css">
+  <script src="/vendor/chart.js/chart.umd.js"></script>
+  <script src="/vendor/xlsx/xlsx.full.min.js"></script>
+</head>
+<body>
+  <div class="shell">
+    <nav class="sidebar">
+      <div class="brand">
+        <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><rect width="32" height="32" rx="7" fill="var(--series-1)"/><path d="M8 22l6-7 4 4 6-8" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>PFinance</span>
+      </div>
+      <a href="#/dashboard" data-route="dashboard">Dashboard</a>
+      <a href="#/transactions" data-route="transactions">Transactions</a>
+      <a href="#/import" data-route="import">Import statement</a>
+      <a href="#/budget" data-route="budget">Spending &amp; budget</a>
+      <a href="#/investments" data-route="investments">Investments</a>
+      <a href="#/properties" data-route="properties">Real estate</a>
+      <a href="#/vehicles" data-route="vehicles">Vehicles</a>
+      <a href="#/categories" data-route="categories">Categories &amp; rules</a>
+      <a href="#/settings" data-route="settings">Settings</a>
+    </nav>
+    <main id="view" class="view"></main>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>

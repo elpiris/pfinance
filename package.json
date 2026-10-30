@@ -1,0 +1,20 @@
+{
+  "name": "pfinance",
+  "version": "1.0.0",
+  "description": "Personal finance tracker: income/expenses, investments, real estate and net worth",
+  "private": true,
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "chart.js": "^4.4.7",
+    "express": "^4.21.2",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  }
+}

@@ -2,7 +2,8 @@ import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
-import { db, tx, setting, setSetting, normalize, DB_PATH } from './src/db.js';
+import { db, tx, setting, setSetting, normalize, DB_PATH, DATA_DIR, BACKUP_DIR, migratedFrom,
+  backupNow, listBackups, autoBackup, checkpoint } from './src/db.js';
 import { createCategorizer, merchantKey } from './src/categorize.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -10,6 +11,25 @@ const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '127.0.0.1';
 
 const app = express();
+
+// Only answer requests addressed to this machine. A malicious website can point its own domain at
+// 127.0.0.1 ("DNS rebinding") to read local apps; checking Host stops that, and checking Origin stops
+// other websites from sending requests here at all.
+const ALLOWED_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]',
+  ...(process.env.PFINANCE_ALLOWED_HOSTS || '').split(',').map(h => h.trim().toLowerCase()).filter(Boolean)]);
+app.use((req, res, next) => {
+  const host = (req.headers.host || '').toLowerCase().replace(/:\d+$/, '');
+  let ok = ALLOWED_HOSTS.has(host);
+  if (ok && req.headers.origin) {
+    try {
+      const o = new URL(req.headers.origin);
+      ok = ALLOWED_HOSTS.has(o.hostname.toLowerCase()) && Number(o.port || 80) === PORT;
+    } catch { ok = false; }
+  }
+  if (!ok) return res.status(403).type('text').send('Forbidden: PFinance only accepts requests from this computer.');
+  next();
+});
+
 app.use(express.json({ limit: '25mb' }));
 // Always revalidate (cheap with ETags) so the browser never runs stale app code after an update.
 app.use(express.static(path.join(ROOT, 'public'), { setHeaders: res => res.setHeader('Cache-Control', 'no-cache') }));
@@ -62,6 +82,8 @@ const monthEnd = month => {
 /* ---------------- Settings ---------------- */
 
 app.get('/api/settings', route(() => ({
+  dataDir: DATA_DIR,
+  migratedFrom,
   currency: setting('currency', 'EUR'),
   locale: setting('locale', 'es-ES'),
   importMapping: setting('importMapping', null),
@@ -684,6 +706,23 @@ app.get('/api/export', route((req, res) => {
   return Object.fromEntries(tables.map(t => [t, db.prepare(`SELECT * FROM ${t}`).all()]));
 }));
 
+const BACKUP_NAME = /^(auto|manual)-[\d_-]+\.db$/;
+
+app.get('/api/backups', route(() => ({ dir: BACKUP_DIR, backups: listBackups() })));
+app.post('/api/backups', route(() => ({ name: backupNow('manual') })));
+app.get('/api/backups/:name', (req, res) => {
+  // The name pattern also rules out path traversal.
+  if (!BACKUP_NAME.test(req.params.name)) return res.status(400).json({ error: 'Invalid backup name.' });
+  res.download(path.join(BACKUP_DIR, req.params.name), `pfinance-${req.params.name}`);
+});
+
+// Show the data folder in Finder / Explorer.
+app.post('/api/open-data-folder', route(() => {
+  const [cmd, args] = process.platform === 'win32' ? ['explorer', [DATA_DIR]]
+    : process.platform === 'darwin' ? ['open', [DATA_DIR]] : ['xdg-open', [DATA_DIR]];
+  spawn(cmd, args, { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
+}));
+
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
 // `--open` (used by the launchers) opens the browser once the server is actually listening.
@@ -697,9 +736,24 @@ function openBrowser() {
 const server = app.listen(PORT, HOST, () => {
   console.log(`PFinance running at ${URL_}`);
   console.log(`Database: ${DB_PATH}`);
+  if (migratedFrom) console.log(`Copied your existing data from ${migratedFrom} (that folder was left untouched).`);
   console.log('Keep this window open while you use PFinance; close it to stop.');
   if (process.argv.includes('--open')) openBrowser();
+
+  const safely = (label, fn) => { try { const r = fn(); if (r) console.log(`${label}: ${r}`); } catch (err) { console.error(`${label} failed:`, err.message); } };
+  safely('Automatic backup', autoBackup);
+  setInterval(() => safely('Automatic backup', autoBackup), 6 * 3600e3);  // makes at most one per ~day
+  setInterval(() => safely('Checkpoint', checkpoint), 5 * 60e3);
 });
+
+// Closing the terminal window sends SIGHUP (macOS and Windows); Ctrl+C sends SIGINT.
+// Fold the -wal file into finance.db and close cleanly so the DB file is complete on its own.
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK']) {
+  process.on(sig, () => {
+    try { checkpoint(); db.close(); } catch { /* already closed */ }
+    process.exit(0);
+  });
+}
 server.on('error', err => {
   if (err.code !== 'EADDRINUSE') throw err;
   // Most likely PFinance is already running (launcher double-clicked twice): just show it.

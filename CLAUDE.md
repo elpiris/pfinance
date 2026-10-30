@@ -6,7 +6,11 @@ Guidance for Claude Code (and humans) working on PFinance, a local-first persona
 
 - **Backend:** Node.js ≥ 22.13, Express 4, SQLite via the built-in `node:sqlite` (`DatabaseSync`). There is no ORM and no build step.
 - **Frontend:** vanilla ES modules, no framework or bundler. Chart.js and SheetJS are served from `node_modules` under `/vendor/*`.
-- **Data:** a single SQLite file, `data/finance.db` (git-ignored). Set `PFINANCE_DATA=<dir>` to use a different folder.
+- **Data:** a single SQLite file, `finance.db`, in the OS per-user data folder (`%APPDATA%\PFinance`, `~/Library/Application Support/PFinance`, `$XDG_DATA_HOME/pfinance`), never inside the repo. Set `PFINANCE_DATA=<dir>` to use a different folder.
+  - On first start, if that folder has no DB but the legacy `<app>/data/finance.db` exists, it is copied over (raw files to a staging dir, then `VACUUM INTO`). The legacy folder must never be modified. `PFINANCE_DATA` skips this.
+  - Backups: `<data>/backups/{auto,manual}-<timestamp>.db`, written with `VACUUM INTO`. One auto backup per ~day, keeping 14. Manual ones are never pruned.
+  - The WAL is checkpointed every 5 min and on SIGINT/SIGTERM/SIGHUP/SIGBREAK.
+- **Security:** the server binds to `127.0.0.1` and a middleware rejects any request whose `Host` isn't localhost (DNS rebinding) or whose `Origin` is another site or port. Extra hosts go in `PFINANCE_ALLOWED_HOSTS`. Keep that middleware first.
 
 ```
 server.js              API routes (settings, categories/rules, import, transactions, accounts, properties, reports, export)
@@ -34,7 +38,7 @@ To test without touching real data, run a throwaway instance:
 PORT=3999 PFINANCE_DATA="$TEMP/pftest" node server.js
 ```
 
-Never run experiments against `data/finance.db`. Importing `src/db.js` (directly or via `categorize.js`/`server.js`) opens the real DB and runs migrations, so use `node --check <file>` for syntax checks. To test a migration on real data, copy the DB, together with its `-wal` and `-shm` files, into a temp dir first.
+Never run experiments against the real data folder. Importing `src/db.js` (directly or via `categorize.js`/`server.js`) opens the real DB and runs migrations, so use `node --check <file>` for syntax checks. Note that simply opening a WAL database and closing it rewrites its files. To test a migration on real data, copy the DB, together with its `-wal` and `-shm` files, into a temp dir first.
 
 ## Domain rules (don't break these)
 

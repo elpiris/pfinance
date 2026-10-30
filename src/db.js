@@ -1,15 +1,87 @@
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DATA_DIR = process.env.PFINANCE_DATA || path.join(ROOT, 'data');
-fs.mkdirSync(DATA_DIR, { recursive: true });
+
+// Data lives in the OS's per-user app-data folder, never inside the app folder, so replacing the app
+// (downloading a new ZIP) can't delete it and sharing the app folder can't leak it.
+function defaultDataDir() {
+  if (process.platform === 'win32') return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'PFinance');
+  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', 'PFinance');
+  return path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'pfinance');
+}
+
+export const DATA_DIR = process.env.PFINANCE_DATA || defaultDataDir();
+export const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 export const DB_PATH = path.join(DATA_DIR, 'finance.db');
+const LEGACY_DB = path.join(ROOT, 'data', 'finance.db');
+fs.mkdirSync(BACKUP_DIR, { recursive: true });
+
+const sqlPath = p => p.replace(/'/g, "''");
+
+// Versions before this one kept the DB in <app>/data. Copy it over once. Opening the old DB in place
+// would fold its -wal file into it, so the raw files are copied to a staging folder and only that copy
+// is opened; VACUUM INTO then writes a single consistent file. The old folder is never modified.
+export let migratedFrom = null;
+if (!process.env.PFINANCE_DATA && !fs.existsSync(DB_PATH) && fs.existsSync(LEGACY_DB)) {
+  const staging = path.join(DATA_DIR, '.migrating');
+  const tmp = `${DB_PATH}.copying`;
+  fs.rmSync(staging, { recursive: true, force: true });
+  fs.rmSync(tmp, { force: true });
+  fs.mkdirSync(staging);
+  for (const ext of ['', '-wal', '-shm']) {
+    if (fs.existsSync(LEGACY_DB + ext)) fs.copyFileSync(LEGACY_DB + ext, path.join(staging, 'finance.db' + ext));
+  }
+  const legacy = new DatabaseSync(path.join(staging, 'finance.db'));
+  legacy.exec(`VACUUM INTO '${sqlPath(tmp)}'`);
+  legacy.close();
+  fs.rmSync(staging, { recursive: true, force: true });
+  // Only a complete copy becomes finance.db, so an interrupted copy is retried next start.
+  fs.renameSync(tmp, DB_PATH);
+  migratedFrom = path.dirname(LEGACY_DB);
+}
 
 export const db = new DatabaseSync(DB_PATH);
 db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
+
+/* ---------- Backups ---------- */
+
+const stamp = () => new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-');
+
+// A backup is one self-contained .db file (no -wal companions), safe to copy anywhere.
+export function backupNow(kind = 'manual') {
+  const file = path.join(BACKUP_DIR, `${kind}-${stamp()}.db`);
+  db.exec(`VACUUM INTO '${sqlPath(file)}'`);
+  return path.basename(file);
+}
+
+export function listBackups() {
+  return fs.readdirSync(BACKUP_DIR)
+    .filter(f => /^(auto|manual)-[\d_-]+\.db$/.test(f))
+    .map(f => {
+      const st = fs.statSync(path.join(BACKUP_DIR, f));
+      return { name: f, kind: f.split('-')[0], size: st.size, created: st.mtime.toISOString() };
+    })
+    .sort((a, b) => b.created.localeCompare(a.created));
+}
+
+const AUTO_KEEP = 14;
+// Daily automatic backup (skipped if one was made in the last 20h); keeps the newest AUTO_KEEP.
+export function autoBackup() {
+  const autos = listBackups().filter(b => b.kind === 'auto');
+  const recent = autos[0] && Date.now() - new Date(autos[0].created).getTime() < 20 * 3600e3;
+  const made = recent ? null : backupNow('auto');
+  for (const old of listBackups().filter(b => b.kind === 'auto').slice(AUTO_KEEP)) fs.unlinkSync(path.join(BACKUP_DIR, old.name));
+  return made;
+}
+
+// Fold the -wal file back into finance.db so the main file is always complete on its own.
+export function checkpoint() {
+  db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+}
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS settings (

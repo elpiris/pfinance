@@ -2,7 +2,21 @@
 
 A personal finance tracker that runs on your own computer. It tracks income and expenses from your bank statements, the monthly value of your investment accounts, your real estate and mortgages, and your overall net worth.
 
-All data is stored locally in `data/finance.db` (SQLite). The server only listens on `127.0.0.1`, so nothing is reachable from outside your machine. Your data is never part of this repository: `data/` is git-ignored.
+All data stays on your computer, in a SQLite database in your user's app-data folder, outside the app folder:
+
+| OS | Data folder |
+|---|---|
+| Windows | `%APPDATA%\PFinance` |
+| macOS | `~/Library/Application Support/PFinance` |
+| Linux | `~/.local/share/pfinance` |
+
+Updating or deleting the app folder never touches your data, and sharing the app folder never shares it. Settings shows the exact path and has an "Open folder" button.
+
+The server only listens on `127.0.0.1` and rejects requests that don't come from `localhost`, so neither other machines nor websites you visit can reach it.
+
+**Backups.** PFinance makes an automatic backup once a day while it runs and keeps the last 14, in the `backups` subfolder. Settings → **Back up now** creates and downloads a single-file backup to keep somewhere else. To restore, close PFinance, replace `finance.db` with the backup (delete `finance.db-wal` and `finance.db-shm`), and start it again.
+
+Upgrading from a version that stored data in the app's `data` folder: the first start copies it to the new location automatically and leaves the old folder as it was. Delete it once you've checked everything is there.
 
 ## Installing and running it
 
@@ -55,9 +69,9 @@ Categories of type **Transfer**, such as "Transfers" and "Investments", are excl
 - **Spending & budget.** Monthly budgets per category, comparison with your 6-month average, a 12-month category heatmap and a detector for recurring charges and subscriptions.
 - **Vehicles.** Resale value, car loan, depreciation and payoff progress.
 - **Categories & rules.** Manage categories, groups and keyword rules.
-- **Settings.** Currency, number format and a JSON backup export.
+- **Settings.** Currency, number format, data location and backups.
 
-`samples/extracto-ejemplo.xlsx` is a fake statement you can import to try the app. Delete `data/finance.db` afterwards to start fresh.
+`samples/extracto-ejemplo.xlsx` is a fake statement you can import to try the app. To start fresh afterwards, close PFinance and delete the data folder.
 
 ## Contributing
 
